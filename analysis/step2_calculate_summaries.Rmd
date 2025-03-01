@@ -1,0 +1,142 @@
+---
+title: "Preprocess data, match IDs, compensate participants"
+author: "Bria Long"
+date: "2024-01-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(jsonlite)
+library(tidyverse)
+library(lubridate)
+```
+
+THIS IS IDENTIFIABLE DATA AND NOT SHAREABLE.
+These data files need to be updated every so often
+```{r}
+load(here::here('data/garden/lookit/all_children_identifiable2024-07-29.RData'))
+```
+
+Now for participant we have IDs for
+```{r}
+roar_data_after_fix <- read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-04262024-v2.csv')) %>%
+  full_join(read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-04262024-v1.csv'))) %>%
+  full_join(read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-04262024-08262024.csv')))
+```
+
+Load manually matched data
+```{r}
+load(file=here::here('data/garden/preprocessed/manually_matched_data_before_122823.RData'))
+
+matched_with_age <- matched %>%
+  rename(child_id_incorrect = child_id) %>%
+  rename(child_id = child_id_lookit) %>%
+  left_join(all_children %>% select(child_id, child_global_id, age_in_days)) %>% # add back age
+  select(child_id_incorrect, child_id, child_global_id, age_in_days) %>%
+  mutate(age_in_years = age_in_days/365)
+```
+
+Get matched children from after the bug fix 
+```{r}
+matched_children_all <- all_children %>%
+  filter(completed == TRUE) %>% # completed lookit
+  filter(!is.na(start_timestamp)) %>% # had a timestamp
+  mutate(day = day(start_timestamp), month = month(start_timestamp)) %>%
+  filter(child_id != 'cXAAAP') %>% # test participant
+  filter(consent == 'accepted') %>% # true by definition
+  mutate(lookit_duration = difftime(ymd_hms(end_timestamp), ymd_hms(start_timestamp), units='mins')) %>%
+  filter(lookit_duration>2) %>% # otherwise not a real session probably
+  group_by(parent_id, child_id) %>%
+  mutate(max_duration = max(lookit_duration)) %>%
+  filter(lookit_duration == max_duration) %>% # only get one session per child, sometimes they attempted twice
+  ungroup() %>%
+  mutate(after_fix = ymd_hms(start_timestamp) > ymd("2023-12-27")) %>%
+  distinct(child_id, child_global_id, parent_id, completed, lookit_duration, start_timestamp, age_in_days, after_fix)  
+
+
+matched_children_after_fix <- matched_children_all %>%
+  filter(after_fix == TRUE) %>%
+  select(child_id, child_global_id, age_in_days)
+
+
+```
+
+
+ 
+
+All raw roar data with child_id and age
+```{r}
+pre_fix <- read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-122723.csv')) %>%
+  mutate(tech_error = TRUE) %>%
+  right_join(matched_with_age, by=c('user.assessmentPid'='child_id_incorrect')) 
+
+all_garden_roar_data_with_age = roar_data_after_fix %>%
+  mutate(tech_error = FALSE) %>%
+  rename(child_id = user.assessmentPid) %>%
+  right_join(matched_children_after_fix) %>% 
+  full_join(pre_fix) 
+
+```
+
+
+
+```{r}
+tech_error_no_data <- matched_children_all %>% 
+  filter(after_fix==FALSE) %>%
+  filter(!child_id %in% pre_fix$child_id) %>%
+  mutate(pc = NA, num_trials = NA, tech_error = TRUE) %>%
+  mutate(age_in_years = age_in_days/365) %>%
+  select(child_id, child_global_id, num_trials, pc, age_in_years)
+
+did_not_start_task <- matched_children_all %>% 
+  filter(after_fix==TRUE) %>%
+  filter(!child_id %in% all_garden_roar_data_with_age$child_id) %>%
+  mutate(pc = NA, num_trials = NA, tech_error = FALSE) %>%
+  mutate(age_in_years = age_in_days/365) %>%
+  select(child_id, child_global_id, num_trials, pc, age_in_years)
+
+roar_summary_by_child_id <- all_garden_roar_data_with_age  %>%
+  filter(assessment_stage == 'test_response') %>%
+  mutate(age_in_years=age_in_days/365) %>%
+  group_by(child_global_id, child_id, age_in_years) %>%
+  filter(!is.na(child_global_id)) %>%
+  mutate(tech_error = FALSE) %>%
+  summarize(pc = mean(correct), num_trials = length(unique(trialId))) %>%
+  full_join(tech_error_no_data) %>%
+  full_join(did_not_start_task) 
+
+
+write_csv(roar_summary_by_child_id, file=here::here('data/garden/output/summary_by_child_id.csv'))
+```
+
+
+# To do -- construct wide dataframe
+Where each column is a potential response for each target word
+NA if the child didn't see that word
+and 1/0 depending on correctness
+and then "pc" is the aggregate percent correct over the trials that they did complete
+Note that this should only be for "test_response" trials (and not practice trials)
+
+Plot descriptives
+```{r}
+library(ggthemes)
+ggplot(roar_summary_by_child_id, aes(x=age_in_years, y=pc, size=num_trials)) +
+  geom_point(alpha=.4) +
+  theme_few() +
+  ylab("Percent correct") +
+  xlab("Age in years") +
+  geom_smooth(aes(weight=num_trials)) +
+  theme(legend.position='none')
+```
+
+Save out data file
+```{r}
+write_csv(all_garden_roar_data_with_age, file=here::here('data/garden/preprocessed/all_garden_roar_data_with_age.csv'))
+```
+
+
+
