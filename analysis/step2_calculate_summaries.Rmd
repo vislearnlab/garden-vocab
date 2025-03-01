@@ -18,19 +18,19 @@ library(lubridate)
 THIS IS IDENTIFIABLE DATA AND NOT SHAREABLE.
 These data files need to be updated every so often
 ```{r}
-load(here::here('data/garden/lookit/all_children_identifiable2024-07-29.RData'))
+load(here::here('data/preprocessed/all_children_identifiable2024-07-29.RData'))
 ```
 
 Now for participant we have IDs for
 ```{r}
-roar_data_after_fix <- read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-04262024-v2.csv')) %>%
-  full_join(read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-04262024-v1.csv'))) %>%
-  full_join(read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-04262024-08262024.csv')))
+roar_data_after_fix <- read_csv(here::here('data/roar_datafiles/vocab-garden-trials-04262024-v2.csv')) %>%
+  full_join(read_csv(here::here('data/roar_datafiles/vocab-garden-trials-04262024-v1.csv'))) %>%
+  full_join(read_csv(here::here('data/roar_datafiles/vocab-garden-trials-04262024-08262024.csv')))
 ```
 
 Load manually matched data
 ```{r}
-load(file=here::here('data/garden/preprocessed/manually_matched_data_before_122823.RData'))
+load(file=here::here('data/preprocessed/manually_matched_data_before_122823.RData'))
 
 matched_with_age <- matched %>%
   rename(child_id_incorrect = child_id) %>%
@@ -70,7 +70,7 @@ matched_children_after_fix <- matched_children_all %>%
 
 All raw roar data with child_id and age
 ```{r}
-pre_fix <- read_csv(here::here('data/garden/roar_datafiles/vocab-garden-trials-122723.csv')) %>%
+pre_fix <- read_csv(here::here('data/roar_datafiles/vocab-garden-trials-122723.csv')) %>%
   mutate(tech_error = TRUE) %>%
   right_join(matched_with_age, by=c('user.assessmentPid'='child_id_incorrect')) 
 
@@ -110,7 +110,7 @@ roar_summary_by_child_id <- all_garden_roar_data_with_age  %>%
   full_join(did_not_start_task) 
 
 
-write_csv(roar_summary_by_child_id, file=here::here('data/garden/output/summary_by_child_id.csv'))
+write_csv(roar_summary_by_child_id, file=here::here('data/output/summary_by_child_id.csv'))
 ```
 
 
@@ -135,7 +135,7 @@ ggplot(roar_summary_by_child_id, aes(x=age_in_years, y=pc, size=num_trials)) +
 
 Save out data file
 ```{r}
-write_csv(all_garden_roar_data_with_age, file=here::here('data/garden/preprocessed/all_garden_roar_data_with_age.csv'))
+write_csv(all_garden_roar_data_with_age, file=here::here('data/preprocessed/all_garden_roar_data_with_age.csv'))
 ```
 
 

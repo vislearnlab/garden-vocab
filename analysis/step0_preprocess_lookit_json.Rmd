@@ -17,15 +17,14 @@ library(here)
 
 THIS USES IDENTIFIABLE DATA AND IS NOT SHAREABLE.
 ```{r}
-lookit_json = here::here('data/garden/lookit/Visual-Vocabulary--A-picture-matching-game-_all-responses-identifiable_072924_final.json')
+lookit_json = here::here('data/lookit/Visual-Vocabulary--A-picture-matching-game-_all-responses-identifiable_072924_final.json')
 responses = jsonlite::read_json(lookit_json)
 ```
 
 Get back participant data from the json.
 ```{r}
 participants = sequence(c(length(responses)))
-# all_children=c('response_id','start_time','child','parent')
-  
+
 for (c in participants){
 
 start_visual_vocab = responses[[c]]$exp_data$`5-instructions-detailed`$eventTimings[[1]]$timestamp
@@ -60,15 +59,6 @@ all_children = all_children %>%
 ```
 # for loading back for compensation
 ```{r}
-save(all_children, file = paste0(here::here('data/garden/lookit/all_children_identifiable'), today(), '.RData'))
+save(all_children, file = paste0(here::here('data/lookit/all_children_identifiable'), today(), '.RData'))
 ```
 
-```{r}
-age_and_id <- all_children %>%
-  select(child_id, completed, age_in_days) %>%
-  mutate(age_in_years = age_in_days/365) %>%
-  distinct(child_id, age_in_years)
-
-
-write_csv(age_and_id, file = "garden_age_ids.csv")
-```

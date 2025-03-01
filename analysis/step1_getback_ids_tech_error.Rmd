@@ -16,7 +16,7 @@ library(tidyverse)
 # Load preprocessed lookit data
 THIS IS IDENTIFIABLE DATA AND NOT SHAREABLE.
 ```{r}
-load(here::here('data/garden/lookit/all_children_identifiable2024-01-05.RData'))
+load(here::here('data/preprocessed/all_children_identifiable2024-05-01.RData'))
 ```
 
 These are the children we don't have IDs for before the bug fitx.
@@ -58,7 +58,7 @@ two_sessions <- children_to_match %>%
 ```
 
 ```{r}
-roar_data = read_csv(here::here('data/garden/lookit/vocab-garden-trials-122723.csv')) %>%
+roar_data = read_csv(here::here('data/roar_datafiles/vocab-garden-trials-122723.csv')) %>%
   group_by(user.assessmentPid) %>%
    mutate(num_trials = length(unique(trialId)), pc = mean(correct)) %>%
   distinct(start_time, user.assessmentPid, num_trials, pc, completed, timeFinished) %>%
@@ -152,5 +152,5 @@ We had to exclude `r length(double_match$child_id)` participants who matched wit
 
 
 ```{R}
-save(matched, file=here::here('data/garden/lookit/manually_matched_data_before_122823.RData'))
+# save(matched, file=here::here('data/garden/lookit/manually_matched_data_before_122823.RData'))
 ```
