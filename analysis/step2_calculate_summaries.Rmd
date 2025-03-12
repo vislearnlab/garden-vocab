@@ -127,7 +127,7 @@ roar_summary_by_child_id <- filtered_garden_roar_data_with_age  %>%
     did_not_start==TRUE ~ "did not start the study",
     TRUE ~ ""
   ), VO_exclude = ifelse(VO_exclude_notes == "", 0, 1),
-      response__date_created = format(start_time, "%Y-%m-%d"),
+      response__date_created = format(start_time, "%Y-%m-%d %H:%M"),
   age_years = round(child__age_rounded/365, 4)) |>
   # Pivoting wider so that trials are at a participant level 
   pivot_wider(id_cols=c(child_global_id, child_id, age_years, VO_exclude, VO_exclude_notes, response__date_created, pc, num_trials), names_from="targetWord", values_from="correct", names_glue = "{targetWord}_trial")
@@ -143,6 +143,12 @@ roar_summary_with_garden_ids <- roar_summary_by_child_id |>
   select(-child_global_id, -NA_trial) 
 
 write_csv(roar_summary_with_garden_ids, file=here::here('data/GARDEN-phase1_study-visualvocab_data.csv'))
+
+data_dictionary <- tibble(Variable = colnames(roar_summary_with_garden_ids)) |> 
+  rowwise() |>
+  mutate(description = ifelse(grepl("_trial$", Variable), paste("Performance on picture-matching trial where the correct choice was", strsplit(Variable, "_")[[1]][1], "from among four images"), NA))
+write_csv(data_dictionary, file=here::here('GARDEN_VO_module_data_dictionary_03112025.csv'))
+
 ```
 
 Creating additional trial level file
