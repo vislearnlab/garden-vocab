@@ -1,7 +1,7 @@
 ---
 title: "Preprocess lookit data from GARDEN vocab study"
 author: "Bria Long"
-date: "2024-01-02"
+date: "2025-03-11"
 output: html_document
 ---
 
@@ -45,8 +45,9 @@ parent_global_id = responses[[c]]$participant$global_id
 parent_hashed_id = responses[[c]]$participant$hashed_id
 completed = responses[[c]]$response$completed
 feedback = responses[[c]]$response$parent_feedback
+session_id = responses[[c]]$response$uuid
 
-this_child = tibble(response = c, start_timestamp = start_visual_vocab, end_timestamp = end_visual_vocab, child_id = child_hashed_id, parent_id = parent_hashed_id, completed = completed, child_name = child_name, parent_name = parent_name, consent = consent, eligible = eligible, birthdate_difference = birthdate_diff, parent_feedback = feedback, child_global_id = child_global_id, parent_global_id = parent_global_id, age_in_days = age_in_days)
+this_child = tibble(response = c, start_timestamp = start_visual_vocab, end_timestamp = end_visual_vocab, child_id = child_hashed_id, parent_id = parent_hashed_id, completed = completed, child_name = child_name, parent_name = parent_name, consent = consent, eligible = eligible, birthdate_difference = birthdate_diff, parent_feedback = feedback, child_global_id = child_global_id, parent_global_id = parent_global_id, age_in_days = age_in_days, session_id = session_id)
 
 if (c==1) {all_children = this_child}
 
@@ -59,6 +60,6 @@ all_children = all_children %>%
 ```
 # for loading back for compensation
 ```{r}
-save(all_children, file = paste0(here::here('data/lookit/all_children_identifiable'), today(), '.RData'))
+save(all_children, file = paste0(here::here('data/preprocessed/all_children_identifiable'), today(), '.RData'))
 ```
 

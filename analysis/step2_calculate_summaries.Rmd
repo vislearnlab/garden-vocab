@@ -1,7 +1,7 @@
 ---
 title: "Preprocess data, match IDs, compensate participants"
 author: "Bria Long"
-date: "2024-01-02"
+date: "2025-03-11"
 output: html_document
 ---
 
@@ -18,7 +18,10 @@ library(lubridate)
 THIS IS IDENTIFIABLE DATA AND NOT SHAREABLE.
 These data files need to be updated every so often
 ```{r}
-load(here::here('data/preprocessed/all_children_identifiable2024-07-29.RData'))
+load(here::here('data/preprocessed/all_children_identifiable2025-03-11.RData'))
+
+all_children <- all_children |> 
+  mutate(child__age_rounded=round(age_in_days/10)*10) # rounding to nearest tenth to de-identify
 ```
 
 Now for participant we have IDs for
@@ -35,38 +38,29 @@ load(file=here::here('data/preprocessed/manually_matched_data_before_122823.RDat
 matched_with_age <- matched %>%
   rename(child_id_incorrect = child_id) %>%
   rename(child_id = child_id_lookit) %>%
-  left_join(all_children %>% select(child_id, child_global_id, age_in_days)) %>% # add back age
-  select(child_id_incorrect, child_id, child_global_id, age_in_days) %>%
-  mutate(age_in_years = age_in_days/365)
+  left_join(all_children %>% select(child_id, child_global_id, child__age_rounded)) %>% # add back age
+  distinct(child_id_incorrect, child_id, child_global_id, child__age_rounded) # keeping distinct entry in case participant tried to participate multiple times in the same day
 ```
 
 Get matched children from after the bug fix 
 ```{r}
 matched_children_all <- all_children %>%
-  filter(completed == TRUE) %>% # completed lookit
   filter(!is.na(start_timestamp)) %>% # had a timestamp
   mutate(day = day(start_timestamp), month = month(start_timestamp)) %>%
   filter(child_id != 'cXAAAP') %>% # test participant
   filter(consent == 'accepted') %>% # true by definition
   mutate(lookit_duration = difftime(ymd_hms(end_timestamp), ymd_hms(start_timestamp), units='mins')) %>%
-  filter(lookit_duration>2) %>% # otherwise not a real session probably
   group_by(parent_id, child_id) %>%
   mutate(max_duration = max(lookit_duration)) %>%
   filter(lookit_duration == max_duration) %>% # only get one session per child, sometimes they attempted twice
   ungroup() %>%
   mutate(after_fix = ymd_hms(start_timestamp) > ymd("2023-12-27")) %>%
-  distinct(child_id, child_global_id, parent_id, completed, lookit_duration, start_timestamp, age_in_days, after_fix)  
-
+  distinct(child_id, child_global_id, parent_id, completed, lookit_duration, start_timestamp, child__age_rounded, after_fix, session_id)
 
 matched_children_after_fix <- matched_children_all %>%
-  filter(after_fix == TRUE) %>%
-  select(child_id, child_global_id, age_in_days)
-
-
+  filter(after_fix == TRUE) %>% 
+  select(child_id, child_global_id, child__age_rounded, session_id)
 ```
-
-
- 
 
 All raw roar data with child_id and age
 ```{r}
@@ -75,56 +69,95 @@ pre_fix <- read_csv(here::here('data/roar_datafiles/vocab-garden-trials-122723.c
   right_join(matched_with_age, by=c('user.assessmentPid'='child_id_incorrect')) 
 
 all_garden_roar_data_with_age = roar_data_after_fix %>%
+  rowwise() %>%
   mutate(tech_error = FALSE) %>%
-  rename(child_id = user.assessmentPid) %>%
+  rename(child_id = user.assessmentPid, session_id = sessionId) %>%
   right_join(matched_children_after_fix) %>% 
-  full_join(pre_fix) 
+  full_join(pre_fix)%>%
+  filter(assessment_stage == 'test_response')
+```
+Remove items which were displayed incorrectly to a few participants
+```{r}
+low_counts <- all_garden_roar_data_with_age |>
+  group_by(targetWord) |>
+  mutate(num_participants = n()) |>
+  filter(num_participants < 5) |> # correct trial types should have at least 10 participants 
+  select(-starts_with("scores."), -child_global_id, -starts_with("user.")) |>
+  ungroup()
 
+summarized_low_counts <- low_counts |>
+  summarize(n = n(), child_ids = list(child_id), .by=c("targetWord", "itemSource"))
+
+filtered_garden_roar_data_with_age <- all_garden_roar_data_with_age |>
+  filter(!(targetWord %in% summarized_low_counts$targetWord))
 ```
 
+# Creating participant-level summary sheet
 
-
+Describing exclusion criteria
 ```{r}
+# Participants for who data could not be recovered because of tech error
 tech_error_no_data <- matched_children_all %>% 
   filter(after_fix==FALSE) %>%
   filter(!child_id %in% pre_fix$child_id) %>%
   mutate(pc = NA, num_trials = NA, tech_error = TRUE) %>%
-  mutate(age_in_years = age_in_days/365) %>%
-  select(child_id, child_global_id, num_trials, pc, age_in_years)
+   mutate(start_time = as.Date(start_timestamp)) %>%
+  select(child_id, child_global_id, num_trials, pc, tech_error, start_time, child__age_rounded)
 
+# Participants who did not get past the practice trials
 did_not_start_task <- matched_children_all %>% 
   filter(after_fix==TRUE) %>%
   filter(!child_id %in% all_garden_roar_data_with_age$child_id) %>%
-  mutate(pc = NA, num_trials = NA, tech_error = FALSE) %>%
-  mutate(age_in_years = age_in_days/365) %>%
-  select(child_id, child_global_id, num_trials, pc, age_in_years)
-
-roar_summary_by_child_id <- all_garden_roar_data_with_age  %>%
-  filter(assessment_stage == 'test_response') %>%
-  mutate(age_in_years=age_in_days/365) %>%
-  group_by(child_global_id, child_id, age_in_years) %>%
-  filter(!is.na(child_global_id)) %>%
-  mutate(tech_error = FALSE) %>%
-  summarize(pc = mean(correct), num_trials = length(unique(trialId))) %>%
-  full_join(tech_error_no_data) %>%
-  full_join(did_not_start_task) 
-
-
-write_csv(roar_summary_by_child_id, file=here::here('data/output/summary_by_child_id.csv'))
+  mutate(pc = NA, num_trials = NA, tech_error = FALSE, did_not_start=TRUE) %>%
+  mutate(start_time = as.Date(start_timestamp)) %>%
+  select(child_id, child_global_id, num_trials, pc, did_not_start, start_time, child__age_rounded)
 ```
 
+Summarizing data for the participant level
+```{r}
+roar_summary_by_child_id <- filtered_garden_roar_data_with_age  %>%
+  filter(!is.na(child_global_id)) %>%
+  group_by(child_global_id, child_id) %>%
+  mutate(tech_error = FALSE) %>%
+  mutate(pc = round(mean(correct), 4), num_trials = length(unique(trialId))) %>%
+  full_join(tech_error_no_data) %>%
+  full_join(did_not_start_task) %>%
+  mutate(VO_exclude_notes = case_when(
+    tech_error==TRUE ~ "tech error - no data",
+    did_not_start==TRUE ~ "did not start the study",
+    TRUE ~ ""
+  ), VO_exclude = ifelse(VO_exclude_notes == "", 0, 1),
+      response__date_created = format(start_time, "%Y-%m-%d"),
+  age_years = round(child__age_rounded/365, 4)) |>
+  # Pivoting wider so that trials are at a participant level 
+  pivot_wider(id_cols=c(child_global_id, child_id, age_years, VO_exclude, VO_exclude_notes, response__date_created, pc, num_trials), names_from="targetWord", values_from="correct", names_glue = "{targetWord}_trial")
+  
+# join in garden ids
+garden_ids <- read_csv(here::here("data/roar_datafiles/gardenP1-ids_7visualvocab_identifiable.csv"))
+roar_summary_with_garden_ids <- roar_summary_by_child_id |>
+  ungroup() |>
+  left_join(garden_ids |> select(hashid_7visualvocab, child__garden_id), by=c("child_id"="hashid_7visualvocab")) |>
+  rename(child__hashed_id=child_id) |>
+  relocate(child__garden_id, .before = VO_exclude) |>
+  relocate(age_years, .before=VO_exclude) |>
+  select(-child_global_id, -NA_trial) 
 
-# To do -- construct wide dataframe
-Where each column is a potential response for each target word
-NA if the child didn't see that word
-and 1/0 depending on correctness
-and then "pc" is the aggregate percent correct over the trials that they did complete
-Note that this should only be for "test_response" trials (and not practice trials)
+write_csv(roar_summary_with_garden_ids, file=here::here('data/GARDEN-phase1_study-visualvocab_data.csv'))
+```
+
+Creating additional trial level file
+```{r}
+roar_summary_trial_level <- all_garden_roar_data_with_age |>
+  rename(child__hashed_id=child_id) |>
+  select(child__hashed_id,correct, child__age_rounded, targetWord, answerWord, trial_index, rt, options, itemSource) |>
+  left_join(roar_summary_with_garden_ids |> select(child__hashed_id, child__garden_id, pc))
+write_csv(roar_summary_trial_level, file=here::here('data/output/trial_level_summary.csv'))
+```
 
 Plot descriptives
 ```{r}
 library(ggthemes)
-ggplot(roar_summary_by_child_id, aes(x=age_in_years, y=pc, size=num_trials)) +
+ggplot(roar_summary_by_child_id, aes(x=age_years, y=pc, size=num_trials)) +
   geom_point(alpha=.4) +
   theme_few() +
   ylab("Percent correct") +
@@ -133,9 +166,9 @@ ggplot(roar_summary_by_child_id, aes(x=age_in_years, y=pc, size=num_trials)) +
   theme(legend.position='none')
 ```
 
-Save out data file
+Save out de-identified raw data file: removing global ID and identifiable age in days
 ```{r}
-write_csv(all_garden_roar_data_with_age, file=here::here('data/preprocessed/all_garden_roar_data_with_age.csv'))
+write_csv(all_garden_roar_data_with_age |> select(-child_global_id, -age_in_days), file=here::here('data/output/all_garden_roar_data_with_age.csv'))
 ```
 
 

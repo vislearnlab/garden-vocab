@@ -1,7 +1,7 @@
 ---
 title: "getback_lookit_ids"
 author: "Bria Long"
-date: "2024-01-02"
+date: "2025-03-11"
 output: html_document
 ---
 
@@ -13,13 +13,14 @@ knitr::opts_chunk$set(echo = TRUE)
 library(jsonlite)
 library(tidyverse)
 ```
+
 # Load preprocessed lookit data
 THIS IS IDENTIFIABLE DATA AND NOT SHAREABLE.
 ```{r}
-load(here::here('data/preprocessed/all_children_identifiable2024-05-01.RData'))
+load(here::here('data/preprocessed/all_children_identifiable2025-03-11.RData'))
 ```
 
-These are the children we don't have IDs for before the bug fitx.
+These are the children we don't have IDs for before the bug fix.
 ```{r}
 children_to_match <- all_children %>%
   filter(completed == TRUE) %>%
@@ -41,12 +42,10 @@ children_to_match <- children_to_match %>%
 ```
 
 Three participants completed the study in under 5 minutes...flagged. Perhaps it was just a mistake and it could be redone? In any case don't try to match those.
-
 ```{r}
 too_fast_second_attempt <- children_to_match %>%
   filter(parent_id %in% too_fast$parent_id) %>%
   filter(lookit_duration>5) 
-  
 ```
 
 No double participants who completed, that's good.
@@ -57,8 +56,9 @@ two_sessions <- children_to_match %>%
   filter(child_id_count>1)
 ```
 
+Reading in data from ROAR
 ```{r}
-roar_data = read_csv(here::here('data/roar_datafiles/vocab-garden-trials-122723.csv')) %>%
+roar_data = read_csv(here::here('data/roar_datafiles/vocab-garden-trials-122723.csv'), show_col_types = FALSE) %>%
   group_by(user.assessmentPid) %>%
    mutate(num_trials = length(unique(trialId)), pc = mean(correct)) %>%
   distinct(start_time, user.assessmentPid, num_trials, pc, completed, timeFinished) %>%
@@ -69,7 +69,7 @@ roar_data = read_csv(here::here('data/roar_datafiles/vocab-garden-trials-122723.
   mutate(exp_duration_roar = difftime(timeFinished, start_time)) 
 ```
 
-Function to check if finished timestamp is between the two lookit timestamps.
+Function to check if finished timestamp is between the start and finish lookit timestamps.
 ```{r}
 checkBetweenVector <- function(this_time, startTime, endTime) {
   this_time = ymd_hms(this_time)
@@ -78,7 +78,6 @@ checkBetweenVector <- function(this_time, startTime, endTime) {
   is_between <- this_time >= startTime & this_time <= endTime
   return(is_between)
 }
-
 ```
 
 Five participants who completed who we can't match timestamps for for some reason - unsure.
@@ -89,7 +88,6 @@ cant_match <- roar_data %>%
   filter(check_participants==0) %>%  
   arrange(start_time) %>%
   filter(completed==TRUE)
-
 ```
 
 Four participants match timestamps from more than one possible session
@@ -111,10 +109,9 @@ roar_match <- roar_data %>%
   mutate(rowname = which(checkBetweenVector(timeFinished, children_to_match$start_timestamp, children_to_match$end_timestamp))) 
 ```
 
-These need to be uniquely identified, so we have to exclude two participants who have similar timestamps
+These need to be uniquely identified to match the ROAR IDs, so we have to exclude two participants who have similar timestamps
 ```{r}
 to_exclude = roar_match$rowname[which(duplicated(roar_match$rowname))]
-
 ```
 
 ```{r}
@@ -139,7 +136,6 @@ matched <- children_to_match %>%
   mutate(diff_duration = abs(exp_duration_lookit - exp_duration_roar))  %>%
   mutate(time_off = difftime(ymd_hms(timeFinished),ymd_hms(end_timestamp))) %>%
   filter(!diff_duration > 1000) # one participant with a very different duration
-
 ```
 
 # Merge back in to see which participants we didn't get.
@@ -152,5 +148,5 @@ We had to exclude `r length(double_match$child_id)` participants who matched wit
 
 
 ```{R}
-# save(matched, file=here::here('data/garden/lookit/manually_matched_data_before_122823.RData'))
+save(matched, file=here::here('data/preprocessed/manually_matched_data_before_122823.RData'))
 ```
